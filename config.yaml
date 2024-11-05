@@ -1,0 +1,18 @@
+subreddits:
+  - SkincareAddiction
+  - Skincare_Addiction
+  - SkincareAddicts
+  - Beauty
+  - 30PlusSkinCare
+  - AsianBeauty
+
+months: 6
+window_size_months: 2 
+post_limit: 10000
+comment_limit: 20
+search_term: CeraVe
+output_folder: data
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(levelname)s - %(message)s"
