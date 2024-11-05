@@ -1,0 +1,30 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+praw = "*"
+pandas = "*"
+numpy = "*"
+scikit-learn = "*"
+notebook = "*"
+ipywidgets = "*"
+matplotlib = "*"
+seaborn = "*"
+nltk = "*"
+transformers = "*"
+sentence-transformers = "*"
+python-dotenv = "*"
+tqdm = "*"
+skimpy = "*"
+wordcloud = "*"
+pyldavis = "*"
+emoji = "*"
+ipykernel = "*"
+
+[dev-packages]
+ipykernel = "*"
+
+[requires]
+python_version = "3.10"
