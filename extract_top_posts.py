@@ -209,7 +209,7 @@ def fetch_posts_from_subreddits(subreddits, comment_limit, months):
                 all_posts.append(post_data)
                 
                 # Rate limiting
-                time.sleep(0.3)
+                time.sleep(0.5)
             
             logging.info(f"Fetched posts from r/{subreddit}")
             
