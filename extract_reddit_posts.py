@@ -6,12 +6,16 @@ import yaml
 import praw
 import pandas as pd
 from dotenv import load_dotenv
+from html import unescape
+import emoji
 from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Iterator, Tuple
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
+import json
+
 
 # Initialize logger at module level
 logger = logging.getLogger(__name__)
@@ -52,7 +56,6 @@ def initialize_reddit() -> praw.Reddit:
         logger.error(f"Reddit authentication failed: {e}")
         raise
 
-
 def compile_term_patterns(search_term: str) -> re.Pattern:
     """Compile regex patterns for the search term."""
     variations = [
@@ -70,65 +73,173 @@ def contains_term(text: str, term_patterns: re.Pattern) -> bool:
         return False
     return bool(term_patterns.search(text))
 
-def get_top_posts(subreddit: praw.models.Subreddit, config: dict) -> Iterator[praw.models.Submission]:
-    """Get top posts using efficient pagination with progress bar and month filtering."""
-    try:
-        params = {'t': 'all'}  # Use 'all' to get more posts
-        total_fetched = 0
-        posts_yielded = 0
-        cutoff_date = None
-
-        months = config.get('months')
-        if months:
-            cutoff_date = datetime.now() - timedelta(days=30.44 * months)
-            
-        pbar = tqdm(desc=f"Fetching posts from r/{subreddit.display_name}", unit=" posts", ncols=100)
+def clean_text(text: Optional[str]) -> str:
+    """
+    Clean and normalize text content from Reddit posts and comments.
+    
+    Args:
+        text: Input text to clean, can be None
         
-        while True:
-            try:
-                new_posts = list(subreddit.new(limit=100, params=params))
+    Returns:
+        Cleaned and normalized text string
+    """
+    if not text:
+        return ""
+        
+    text = unescape(text) # Unescape HTML entities
+    text = str(text)
+    text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text) # Remove URLs 
+    text = re.sub(r'/u/\w+', '', text) # Remove Reddit user mentions
+    text = re.sub(r'u/\w+', '', text) 
+    text = re.sub(r'/r/\w+', '', text) # Remove subreddit references
+    text = re.sub(r'r/\w+', '', text)
+    text = emoji.demojize(text) # Convert emoji to text
+    text = re.sub(r'[^\w\s.,!?-]', ' ', text) # Remove special characters but keep basic punctuation
+    text = re.sub(r'\s+', ' ', text) # Normalize whitespace
+    text = re.sub(r'([.,!?])\1+', r'\1', text) # Remove multiple punctuation
+    text = text.strip() # Remove trailing whitespace
+    return text
+
+class CheckpointManager:
+    def __init__(self, subreddit_name: str, checkpoint_dir: str = "checkpoints"):
+        self.checkpoint_file = os.path.join(checkpoint_dir, f"{subreddit_name}_checkpoint.json")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+    def save_checkpoint(self, window_start: datetime, last_post_id: str, total_fetched: int):
+        checkpoint = {
+            'window_start': window_start.isoformat(),
+            'last_post_id': last_post_id,
+            'total_fetched': total_fetched,
+            'timestamp': datetime.now().isoformat()
+        }
+        with open(self.checkpoint_file, 'w') as f:
+            json.dump(checkpoint, f, indent=2)
+
+    def load_checkpoint(self) -> Optional[dict]:
+        if os.path.exists(self.checkpoint_file):
+            with open(self.checkpoint_file, 'r') as f:
+                checkpoint = json.load(f)
+                checkpoint['window_start'] = datetime.fromisoformat(checkpoint['window_start'])
+                return checkpoint
+        return None
+
+    def clear_checkpoint(self):
+        if os.path.exists(self.checkpoint_file):
+            os.remove(self.checkpoint_file)
+
+def get_posts_in_time_window(
+    subreddit: praw.models.Subreddit,
+    start_date: datetime,
+    end_date: datetime,
+    last_post_id: Optional[str] = None
+) -> Iterator[praw.models.Submission]:
+    """Get posts from a subreddit within a specific time window."""
+    params = {'t': 'all'}
+    if last_post_id:
+        params['after'] = last_post_id
+    
+    retry_count = 0
+    MAX_RETRIES = 5
+    
+    while True:
+        try:
+            new_posts = list(subreddit.new(limit=100, params=params))
+            
+            if not new_posts:
+                break
+
+            retry_count = 0
+            reached_start = False
+
+            for post in new_posts:
+                post_date = datetime.fromtimestamp(post.created_utc)
                 
-                if not new_posts:
+                if post_date < start_date:
+                    reached_start = True
                     break
                     
-                total_fetched += len(new_posts)
-                
-                for post in new_posts:
-                    post_date = datetime.fromtimestamp(post.created_utc)
-                    
-                    # Break if we've gone past our cutoff date
-                    if cutoff_date and post_date < cutoff_date:
-                        pbar.close()
-                        logger.info(f"Reached date cutoff in r/{subreddit.display_name}")
-                        return
-                    
-                    posts_yielded += 1
+                if start_date <= post_date <= end_date:
                     yield post
-                    pbar.update(1)
-                
-                # Update pagination parameters
-                last_post = new_posts[-1]
-                params['after'] = last_post.fullname
-                params['count'] = total_fetched
-                
-                # Avoid rate limiting
-                time.sleep(0.5)
-                
-            except Exception as e:
-                logger.error(f"Error fetching batch from r/{subreddit.display_name}: {e}")
-                time.sleep(2)
-                continue
-                
-        pbar.close()
-        logger.info(f"Completed fetching from r/{subreddit.display_name}: Posts yielded: {posts_yielded:,}")
-        
+
+            if reached_start:
+                break
+
+            params['after'] = new_posts[-1].fullname
+            time.sleep(1)  # Rate limiting
+
+        except Exception as e:
+            retry_count += 1
+            if retry_count > MAX_RETRIES:
+                logger.error(f"Max retries ({MAX_RETRIES}) exceeded")
+                raise
+            delay = min(60, 2 ** retry_count)
+            logger.warning(f"Error fetching posts: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+
+def get_top_posts(subreddit: praw.models.Subreddit, config: dict) -> Iterator[praw.models.Submission]:
+    """Get posts using time windows and checkpointing."""
+    window_size_months = config.get('window_size_months', 2)
+    total_months = config.get('months', 6)
+    
+    checkpoint_mgr = CheckpointManager(subreddit.display_name)
+    checkpoint = checkpoint_mgr.load_checkpoint()
+    
+    end_date = datetime.now()
+    current_window_start = end_date - timedelta(days=30.44 * total_months)
+    
+    if checkpoint:
+        logger.info(f"Resuming from checkpoint: {checkpoint['window_start']}")
+        current_window_start = checkpoint['window_start']
+        last_post_id = checkpoint['last_post_id']
+        total_fetched = checkpoint['total_fetched']
+    else:
+        last_post_id = None
+        total_fetched = 0
+
+    pbar = tqdm(
+        desc=f"Fetching posts from r/{subreddit.display_name}",
+        unit=" posts",
+        initial=total_fetched
+    )
+
+    try:
+        while current_window_start < end_date:
+            window_end = min(
+                current_window_start + timedelta(days=30.44 * window_size_months),
+                end_date
+            )
+            
+            logger.info(f"Fetching window: {current_window_start.date()} to {window_end.date()}")
+            
+            for post in get_posts_in_time_window(
+                subreddit,
+                current_window_start,
+                window_end,
+                last_post_id
+            ):
+                total_fetched += 1
+                pbar.update(1)
+                yield post
+                last_post_id = post.fullname
+
+            # Save checkpoint after each window
+            checkpoint_mgr.save_checkpoint(current_window_start, last_post_id, total_fetched)
+            
+            # Move to next window
+            current_window_start = window_end
+            last_post_id = None
+
+        logger.info(f"Completed fetching from r/{subreddit.display_name}: {total_fetched:,} posts processed")
+        checkpoint_mgr.clear_checkpoint()
+
     except Exception as e:
-        logger.error(f"Error during pagination: {e}")
+        logger.error(f"Error during pagination for r/{subreddit.display_name}: {e}")
         raise
+    finally:
+        pbar.close()
 
 def process_comments(submission: praw.models.Submission, term_patterns: re.Pattern, config: dict) -> Tuple[List[Dict], bool]:
-    """Process comments from a submission, excluding AutoModerator comments."""
-    
+    """Process comments from a submission."""
     comments = []
     term_found = False
     comment_limit = config.get('comment_limit', float('inf'))
@@ -144,18 +255,24 @@ def process_comments(submission: praw.models.Submission, term_patterns: re.Patte
         
         for comment in valid_comments:
             contains_search_term = contains_term(comment.body, term_patterns)
+            
             if contains_search_term:
                 term_found = True
+                cleaned_body = clean_text(comment.body)
                 
-            comment_data = {
-                'post_id': submission.id,
-                'body': comment.body,
-                'score': comment.score,
-                'contains_term': contains_search_term
-            }
-            comments.append(comment_data)
+                comment_data = {
+                    'post_id': submission.id,
+                    'body': cleaned_body,
+                    'score': comment.score,
+                    'contains_term': True
+                }
+                comments.append(comment_data)
             
         return comments, term_found
+        
+    except Exception as e:
+        logger.warning(f"Error processing comments for submission {submission.id}: {e}")
+        return [], False
         
     except Exception as e:
         logger.warning(f"Error processing comments for submission {submission.id}: {e}")
@@ -199,25 +316,26 @@ def process_submission(submission: praw.models.Submission, search_term: str, con
     try:
         term_patterns = compile_term_patterns(search_term)
         
-        # Check title and body for search term
         title_contains = contains_term(submission.title, term_patterns)
         body_contains = contains_term(submission.selftext, term_patterns)
         
-        # Process comments and check for search term
         comments, comments_contain = process_comments(submission, term_patterns, config)
         
-        # If term isn't found anywhere, skip this submission
         if not (title_contains or body_contains or comments_contain):
             return None
+            
+        cleaned_title = clean_text(submission.title)
+        cleaned_selftext = clean_text(submission.selftext)
             
         media_info = check_media_type(submission)
         
         post_data = {
             'post_id': submission.id,
-            'title': submission.title,
-            'selftext': submission.selftext,
-            'score': submission.score,
             'subreddit': submission.subreddit.display_name,
+            'flair': submission.link_flair_text,
+            'title': cleaned_title,
+            'selftext': cleaned_selftext,
+            'score': submission.score,
             'num_comments': submission.num_comments,
             'created_utc': datetime.fromtimestamp(submission.created_utc),
             'has_image': media_info['has_image'],
@@ -246,8 +364,7 @@ def process_subreddit(subreddit_name: str, reddit: praw.Reddit, config: dict) ->
         
         for submission in get_top_posts(subreddit, config):
             try:
-                # Add rate limiting delay
-                time.sleep(0.5) 
+                time.sleep(0.5)
                 
                 result = process_submission(submission, search_term, config)
                 if result is not None:
@@ -302,7 +419,7 @@ def collect_data(config: dict, reddit: praw.Reddit) -> None:
     all_comments = []
     start_time = datetime.now()
 
-    max_workers = min(len(config['subreddits']), 5)  # Limit to 5 concurrent workers
+    max_workers = min(len(config['subreddits']), 6)
     
     # Create thread pool for parallel processing
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -335,6 +452,7 @@ def main():
     """Entry point for the Reddit data collection script."""
     try:
         config = load_config()
+        config.setdefault('window_size_months', 2)  # Default window size
         
         global logger
         logger = setup_logging(config)
@@ -345,5 +463,6 @@ def main():
         logger.error(f"Application error: {e}")
         raise
 
+    
 if __name__ == "__main__":
     main()
