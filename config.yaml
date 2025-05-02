@@ -1,0 +1,42 @@
+# Configuration file for Reddit data collection and sentiment analysis
+
+# Brand names to collect data
+brands:
+  - "CeraVe"
+  - "Cetaphil"
+  - "The Ordinary"
+  - "Neutrogena"
+  - "La Roche-Posay"
+
+# Subreddits to scan for brand mentions
+subreddits:
+  - "SkincareAddiction"
+  - "SkinCare_Addiction"
+  - "SkincareAddictionUK"
+  - "SkincareAddicts"
+  - "Sephora"
+
+# Data collection parameters
+months: 12                 # Collect data from the last 2 yrs
+post_limit: 500           # Maximum posts to collect per brand and subreddit
+comment_limit: 20          # Maximum comments to analyze per post
+output_folder: "data"      # Folder to save collected data and analysis results
+
+# Sentiment analysis parameters
+sentiment_analysis:
+  wordcloud_max_words: 100                
+  min_word_length: 3                  
+  top_phrases_count: 15                 
+  comparison_metrics:                      
+    - "vader_compound"
+    - "textblob_polarity"
+  time_trend_interval: "week"            
+  plot_colors:                             
+    positive: "#66b3ff"
+    neutral: "#99ff99"
+    negative: "#ff9999"
+
+# Logging configuration
+logging:
+  level: "INFO"      
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
