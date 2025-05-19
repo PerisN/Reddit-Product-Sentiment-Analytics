@@ -21,7 +21,8 @@ skimpy = "*"
 wordcloud = "*"
 emoji = "*"
 ipykernel = "*"
-
+backoff = "*"
+pmaw = "*"
 
 [dev-packages]
 ipykernel = "*"
