@@ -23,6 +23,7 @@ emoji = "*"
 ipykernel = "*"
 backoff = "*"
 pmaw = "*"
+zstandard = "*"
 
 [dev-packages]
 ipykernel = "*"

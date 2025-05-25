@@ -249,7 +249,7 @@ def main():
     Path("data").mkdir(exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"data/reddit_top_posts_{timestamp}.csv"
+    filename = f"data/top_posts_{timestamp}.csv"
     
     try:
         df.to_csv(filename, index=False, encoding='utf-8-sig')
@@ -258,6 +258,7 @@ def main():
         logging.info(f"Sample of collected data:\n{df.sample(n=5 if len(df) >= 5 else len(df))}")
     except Exception as e:
         logging.error(f"Error saving data to CSV: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,42 +1,132 @@
-# Configuration file for Reddit data collection and sentiment analysis
+# This file configures the search terms and behavior for finding skincare-related content
 
-# Brand names to collect data
-brands:
-  - "CeraVe"
-  - "Cetaphil"
-  - "The Ordinary"
-  - "Neutrogena"
-  - "La Roche-Posay"
+# Output directory
+output_dir: .data/skincare_search_results/
 
-# Subreddits to scan for brand mentions
-subreddits:
-  - "SkincareAddiction"
-  - "SkinCare_Addiction"
-  - "SkincareAddictionUK"
-  - "SkincareAddicts"
-  - "Sephora"
 
-# Data collection parameters
-months: 12                 # Collect data from the last 2 yrs
-post_limit: 500           # Maximum posts to collect per brand and subreddit
-comment_limit: 20          # Maximum comments to analyze per post
-output_folder: "data"      # Folder to save collected data and analysis results
+# Filter by specific subreddits (leave empty to search all subreddits)
+subreddit_filter:
+  - Skincare_Addiction 
+  - SkincareAddicts
+  - skincareaddiction
+  - DermatologyQuestions
+  - AsianBeauty
+  - 30plusskincare
+  - acne
+  - tretinoin
+  - Rosacea
+  - eczema
+  - psoriasis
+  - acne_scars
 
-# Sentiment analysis parameters
-sentiment_analysis:
-  wordcloud_max_words: 100                
-  min_word_length: 3                  
-  top_phrases_count: 15                 
-  comparison_metrics:                      
-    - "vader_compound"
-    - "textblob_polarity"
-  time_trend_interval: "week"            
-  plot_colors:                             
-    positive: "#66b3ff"
-    neutral: "#99ff99"
-    negative: "#ff9999"
 
-# Logging configuration
-logging:
-  level: "INFO"      
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# Skin-related terms
+skin_terms:
+  # Common skin issues
+  - acne
+  - breakouts
+  - pimples
+  - blackheads
+  - whiteheads
+  - eczema
+  - dermatitis
+  - psoriasis
+  - rosacea
+  - dry skin
+  - oily skin
+  - sensitive skin
+  - aging skin
+  - anti-aging
+  - wrinkles
+  - fine lines
+  - age spots
+  - dark spots
+  - hyperpigmentation
+  - melasma
+  - sun damage
+  - acne scars
+  - post inflammatory hyperpigmentation
+  - ingrown hairs
+  - enlarged pores
+  - clogged pores
+  - stretch marks
+  - uneven skin tone
+  - texture issues
+  - rough skin
+  - itchy skin
+  - burning skin
+  - irritation
+  - inflammation
+  - flaking
+  - peeling
+  
+  # Skincare terms and routines
+  - skincare routine
+  - morning routine
+  - night routine
+  - double cleansing
+  - oil cleansing
+  - chemical exfoliation
+  
+  # Active ingredients
+  - retinol
+  - retinoid
+  - tretinoin
+  - adapalene
+  - vitamin c
+  - niacinamide
+  - hyaluronic acid
+  - salicylic acid
+  - benzoyl peroxide
+  - glycolic acid
+  - lactic acid
+  - mandelic acid
+  - azelaic acid
+  - peptides
+  - ceramides
+  - squalane
+  - alpha arbutin
+  - actives
+  
+  # Product types
+  - cleanser
+  - face wash
+  - exfoliant
+  - mask
+  - clay mask
+  - spot treatment
+  - acne treatment
+  - anti-aging cream
+  - makeup remover
+  - balm cleanser
+  - gel cleanser
+  - foam cleanser
+  - moisturizer
+  - micellar water
+  - toner
+  - essence
+  - serum
+  - moisturizer
+  - face cream
+  - night cream
+  - eye cream
+  - sunscreen
+  - SPF
+  - sun protection
+
+# Brand names
+brand_names:
+  - cetaphil
+  - cerave
+  - la roche posay
+  - la roche-posay
+  - neutrogena
+  - garnier
+  - the ordinary
+  - paula's choice
+  - cosrx
+
+
+# Search settings
+case_sensitive: false           
+match_whole_words: true        
